@@ -1,14 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using TwitchLib.Client;
 using TwitchLib.Client.Models;
 using TwitchLib.Client.Events;
-using TwitchLib.PubSub;
-using TwitchLib.PubSub.Events;
-using System.Media;
+using TwitchLib.Client.Extensions;
 
 namespace HIMBotTwitch
 {
@@ -16,18 +10,16 @@ namespace HIMBotTwitch
     {
         private readonly ConnectionCredentials creds = new ConnectionCredentials(TwitchInfo.ChannelName, TwitchInfo.BotToken);
         private TwitchClient client;
-        private TwitchPubSub pubSubClient;
 
         public Action<bool> Connected;
         public Action<string> LogTxt;
 
-        private SoundPlayer _audio = new SoundPlayer(@"C:\Users\HiImMike\Desktop\Games\#01\Game #01\Assets\SFX\334756__dneproman__ma-sfx-snes-coins-2.wav");
+        private string[] _bannedWords = new string[4] { "bigfollow", "big follows", "retard", "js is best" };
 
         internal void Connect(bool isLogging)
         {
             LogTxt("[Bot]: Initializing...");
             client = new TwitchClient();
-            pubSubClient = new TwitchPubSub();
 
             // TwitchLib Client
             client.Initialize(creds, TwitchInfo.ChannelName);
@@ -36,67 +28,20 @@ namespace HIMBotTwitch
             client.OnChatCommandReceived += Client_OnChatCommandRecieved;
             client.OnMessageReceived += Client_OnMessageReceived;
 
-            // PubSub Client
-            pubSubClient.OnPubSubServiceConnected += PSClient_OnPubSubServiceConnected;
-            pubSubClient.OnListenResponse += PSClient_OnListenResponse;
-            pubSubClient.OnViewCount += PSClient_OnViewCount;
-            pubSubClient.OnFollow += PSClient_OnFollow;
-            pubSubClient.OnMessageDeleted += PSClient_OnMessageDeleted;
-
-            if (isLogging)
-            {
-                pubSubClient.OnLog += PSClient_OnLog;
-            }
-
-            pubSubClient.ListenToVideoPlayback(TwitchInfo.ChannelName);
-            pubSubClient.ListenToFollows(TwitchInfo.ChannelName);
-            pubSubClient.ListenToCommerce(TwitchInfo.ChannelName);
-            pubSubClient.ListenToBitsEvents(TwitchInfo.ChannelName);
-            pubSubClient.ListenToRaid(TwitchInfo.ChannelName);
-            pubSubClient.ListenToRewards(TwitchInfo.ChannelName);
-
-
             client.Connect();
-            pubSubClient.Connect();
         }
 
-        private void PSClient_OnListenResponse(object sender, OnListenResponseArgs e)
-        {
-            if (!e.Successful)
-            {
-                LogTxt($"{e.Response}");
-            }
-        }
-
-        private void PSClient_OnPubSubServiceConnected(object sender, EventArgs e)
-        {
-            pubSubClient.SendTopics(TwitchInfo.BotToken);
-        }
-
-        private void PSClient_OnMessageDeleted(object sender, OnMessageDeletedArgs e)
-        {
-            _audio.Play();
-            LogTxt(e.DeletedBy.ToString());
-        }
-
-        private void PSClient_OnFollow(object sender, OnFollowArgs e)
-        {
-         _audio.Play();
-            for (int i = 0; i < 1000; i++)
-            {
-                LogTxt(i + "NEW FOLLOWER!!!!");
-            }
-        }
-
-        private void PSClient_OnViewCount(object sender, OnViewCountArgs e)
-        {
-            LogTxt("Views: " + e.Viewers.ToString());
-            LogTxt("ServerTime: " + e.ServerTime.ToString());
-
-        }
 
         private void Client_OnMessageReceived(object sender, OnMessageReceivedArgs e)
         {
+            for (int i = 0; i < _bannedWords.Length; i++)
+            {
+                if (e.ChatMessage.Message.ToLower().Contains(_bannedWords[i]))
+                {
+                    client.BanUser(TwitchInfo.ChannelName, e.ChatMessage.Username);
+                }
+            }
+
             if (LogTxt != null)
             {
                 LogTxt($"[{e.ChatMessage.Username}]: {e.ChatMessage.Message}");
@@ -117,9 +62,30 @@ namespace HIMBotTwitch
             {
                 case "cookie":
                     SendMsg("Here's a cookie for you " + e.Command.ChatMessage.Username + " HolidayCookie");
-                    return;
+                    break;
+                case "roll":
+                    string msg = $"{e.Command.ChatMessage.DisplayName} Rolled {RndInt(1, 6)}";
+                    client.SendMessage(TwitchInfo.ChannelName, msg);
+                    Console.WriteLine($"[Bot]: {msg}");
+                    break;
+                case "social":
+                    client.SendMessage(TwitchInfo.ChannelName, "Here are all my social links! YouTube: http://bit.ly/3p01GJD Twitter: https://bit.ly/369XH5f Discord: http://bit.ly/36h7zMm.");
+                    break;
+                case "help":
+                    client.SendMessage(TwitchInfo.ChannelName, "There is a panel with all commands and a link to the github repo below, please check it out!");
+                    break;
                 default:
                     break;
+            }
+
+            if (e.Command.ChatMessage.DisplayName == TwitchInfo.ChannelName)
+            {
+                switch (e.Command.CommandText.ToLower())
+                {
+                    case "hi":
+                        client.SendMessage(TwitchInfo.ChannelName, "Hi Boss");
+                        return;
+                }
             }
         }
 
@@ -143,6 +109,9 @@ namespace HIMBotTwitch
             if(Connected != null)
             {
                 Connected(false);
+            }else
+            {
+                LogTxt("[Bot]: Connected deligate not recieved!");
             }
             Console.WriteLine("[Bot]: Disconnecting...");
             client.Disconnect();
@@ -152,7 +121,7 @@ namespace HIMBotTwitch
         {
             if (msg != null)
             {
-                Console.WriteLine(msg);
+                LogTxt($"[Bot]: {msg}");
                 client.SendMessage(TwitchInfo.ChannelName, msg.ToString());
             }
         }
@@ -160,6 +129,17 @@ namespace HIMBotTwitch
         public TwitchClient GetClient()
         {
             return client;
+        }
+
+        private int RndInt(int min, int max)
+        {
+            int value;
+
+            Random rnd = new Random();
+
+            value = rnd.Next(min, max + 1);
+
+            return value;
         }
     }
 }
